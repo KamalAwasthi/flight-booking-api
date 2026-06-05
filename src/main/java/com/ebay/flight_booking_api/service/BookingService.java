@@ -11,6 +11,7 @@ import com.ebay.flight_booking_api.repository.FlightRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.UUID;
 
 @Service
@@ -28,28 +29,39 @@ public class BookingService {
         synchronized (lock) {
             Flight flight = flightRepository.findByFlightNumber(flightNumber)
                     .orElseThrow(() -> new FlightNotFoundException(flightNumber));
-            
-            if (flight.getAvailableSeats() <= 0) {
-                throw new NoSeatsAvailableException(flightNumber);
-            }
+
+            validateSeats(flightNumber, flight);
             
             flight.setAvailableSeats(flight.getAvailableSeats() - 1);
             flightRepository.save(flight);
             
-            String bookingId = UUID.randomUUID().toString();
-            Booking booking = Booking.builder()
-                    .bookingId(bookingId)
-                    .flightNumber(flightNumber)
-                    .passengerName(request.getPassengerName())
-                    .build();
+            Booking booking = createBooking(request);
             
             bookingRepository.save(booking);
             
-            return BookingResponse.builder()
-                    .bookingId(bookingId)
-                    .flightNumber(flightNumber)
-                    .passengerName(request.getPassengerName())
-                    .build();
+            return mapToResponse(booking);
         }
+    }
+
+    private void validateSeats(String flightNumber, Flight flight) {
+        if (flight.getAvailableSeats() <= 0) {
+            throw new NoSeatsAvailableException(flightNumber);
+        }
+    }
+
+    private Booking createBooking(BookTicketRequest request) {
+        return Booking.builder()
+                .bookingId(UUID.randomUUID().toString())
+                .flightNumber(request.getFlightNumber())
+                .passengerName(request.getPassengerName())
+                .build();
+    }
+
+    private BookingResponse mapToResponse(Booking booking) {
+        return BookingResponse.builder()
+                .bookingId(booking.getBookingId())
+                .flightNumber(booking.getFlightNumber())
+                .passengerName(booking.getPassengerName())
+                .build();
     }
 }
