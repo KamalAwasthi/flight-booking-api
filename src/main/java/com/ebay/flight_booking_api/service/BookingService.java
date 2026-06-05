@@ -19,14 +19,18 @@ public class BookingService {
     
     private final FlightRepository flightRepository;
     private final BookingRepository bookingRepository;
+    private final ConcurrentHashMap<String, Object> flightLocks = new ConcurrentHashMap<>();
     
     public BookingResponse bookTicket(BookTicketRequest request) {
-        synchronized (this) {
-            Flight flight = flightRepository.findByFlightNumber(request.getFlightNumber())
-                    .orElseThrow(() -> new FlightNotFoundException(request.getFlightNumber()));
+        String flightNumber = request.getFlightNumber();
+        Object lock = flightLocks.computeIfAbsent(flightNumber, k -> new Object());
+        
+        synchronized (lock) {
+            Flight flight = flightRepository.findByFlightNumber(flightNumber)
+                    .orElseThrow(() -> new FlightNotFoundException(flightNumber));
             
             if (flight.getAvailableSeats() <= 0) {
-                throw new NoSeatsAvailableException(request.getFlightNumber());
+                throw new NoSeatsAvailableException(flightNumber);
             }
             
             flight.setAvailableSeats(flight.getAvailableSeats() - 1);
@@ -35,7 +39,7 @@ public class BookingService {
             String bookingId = UUID.randomUUID().toString();
             Booking booking = Booking.builder()
                     .bookingId(bookingId)
-                    .flightNumber(request.getFlightNumber())
+                    .flightNumber(flightNumber)
                     .passengerName(request.getPassengerName())
                     .build();
             
@@ -43,7 +47,7 @@ public class BookingService {
             
             return BookingResponse.builder()
                     .bookingId(bookingId)
-                    .flightNumber(request.getFlightNumber())
+                    .flightNumber(flightNumber)
                     .passengerName(request.getPassengerName())
                     .build();
         }
